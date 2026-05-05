@@ -239,6 +239,16 @@ void ignition_schedule_spark(uint8_t cyl_index)
 {
     if (cyl_index >= G8BA_CYLINDERS) return;
 
+    /*
+     * SAFE-2 FIX (defense in depth): also check g_ignition.mode.  Even with
+     * the corrected ignition_set_mode() that propagates enabled flags, we
+     * want a final firewall here so any stale enabled bit (e.g. from a coil
+     * state struct being initialised before a mode transition completes)
+     * cannot reach the angle scheduler during HARD_CUT or OFF.
+     */
+    ign_mode_t mode = g_ignition.mode;
+    if (mode == IGN_MODE_OFF || mode == IGN_MODE_HARD_CUT) return;
+
     coil_state_t *c = (coil_state_t *)&g_ignition.coils[cyl_index];
     if (!c->enabled) return;
 
@@ -253,12 +263,39 @@ void ignition_set_mode(ign_mode_t mode)
 {
     g_ignition.mode = mode;
 
-    if (mode == IGN_MODE_HARD_CUT) {
-        /* Immediately disable all coils */
+    /*
+     * SAFE-2 FIX: propagate mode → coils[].enabled immediately.
+     *
+     * Previously the function updated only soft_cut_mask, leaving coils[].enabled
+     * stale until the next ignition_calc_advance() pass.  But the OFF and HARD_CUT
+     * branches of ignition_calc_advance() return EARLY and never touch enabled,
+     * so once we transitioned RUNNING → HARD_CUT the per-cylinder enable flags
+     * stayed `true`.  ignition_schedule_spark() only checks c->enabled (not
+     * g_ignition.mode), so a pending angle-scheduled fire-event from RusEFI
+     * could still drive the coil during a hard-cut — defeating the rev-limit
+     * and the sync-loss emergency cut.
+     *
+     * Fix: clear mask AND every coils[].enabled atomically here on entry to
+     * any non-firing mode; restore both on entry to a firing mode so the next
+     * angle event is dispatched correctly.
+     */
+    if (mode == IGN_MODE_HARD_CUT || mode == IGN_MODE_OFF) {
         g_ignition.soft_cut_mask = 0x00u;
+        chSysLock();
+        for (uint8_t i = 0u; i < G8BA_CYLINDERS; i++) {
+            ((coil_state_t *)&g_ignition.coils[i])->enabled = false;
+        }
+        chSysUnlock();
     } else if (mode == IGN_MODE_RUNNING || mode == IGN_MODE_CRANKING) {
         g_ignition.soft_cut_mask = 0xFFu;
+        chSysLock();
+        for (uint8_t i = 0u; i < G8BA_CYLINDERS; i++) {
+            ((coil_state_t *)&g_ignition.coils[i])->enabled = true;
+        }
+        chSysUnlock();
     }
+    /* IGN_MODE_SOFT_CUT: caller drives ignition_set_soft_cut_mask() with
+     * the alternating mask; do not touch enabled here. */
 }
 
 void ignition_set_soft_cut_mask(uint8_t mask)

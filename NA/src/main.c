@@ -138,9 +138,30 @@ static inline float read_vbatt(void)
 static engine_state_t eval_engine_state(rpm_t rpm, bool sync_ok,
                                         bool hard_cut_active)
 {
+    /*
+     * SAFE-4 FIX: protection takes priority over cranking.
+     *
+     * Previous order:
+     *   1. !sync_ok || rpm == 0  → OFF
+     *   2. rpm < CRANK           → CRANKING
+     *   3. hard_cut_active       → PROTECT
+     * Failure case: a hard-cut condition that asserts during the cranking
+     * window (e.g. low oil pressure detected on the very first start, or a
+     * sync-loss-while-still-spinning-down with rpm < 400) fell through to
+     * CRANKING in step 2, never reaching the PROTECT check.  The state
+     * machine then commanded ignition_set_mode(IGN_MODE_CRANKING) which
+     * applies the cranking-advance and turns the coils back ON, even though
+     * a protective fuel-cut was set in parallel.  Net result: spark with no
+     * fuel after a few revolutions — undesirable, and inconsistent with the
+     * documented intent of PROTECT (full ignition off).
+     *
+     * Correct order: hard_cut_active is the highest-priority transition
+     * (after the no-sync OFF case) — protection always wins over normal
+     * operating modes.
+     */
     if (!sync_ok || rpm == 0u)                  return ENGINE_STATE_OFF;
-    if (rpm < G8BA_RPM_CRANK)                   return ENGINE_STATE_CRANKING;
     if (hard_cut_active)                         return ENGINE_STATE_PROTECT;
+    if (rpm < G8BA_RPM_CRANK)                   return ENGINE_STATE_CRANKING;
     return ENGINE_STATE_RUNNING;
 }
 
@@ -488,11 +509,21 @@ void g8ba_cylinder_event_isr(uint8_t cyl_index)
      * per 720° cycle instead of 8×. This meant 6 of every 8 fuel/ignition
      * events were dispatched to the WRONG cylinder.
      *
-     * chMBPostI() is ISR-safe (called inside ISRS locked context).
+     * SAFE-1 FIX: chMBPostI() is an *I-class* ChibiOS primitive; it must be
+     * invoked inside an ISR critical section established by
+     * chSysLockFromISR()/chSysUnlockFromISR().  The previous implementation
+     * called it bare from ISR context — in DEBUG builds the kernel state
+     * check (CH_DBG_SYSTEM_STATE_CHECK) asserts; in release builds the
+     * mailbox internal counters can be corrupted if a higher-priority ISR
+     * preempts mid-update, leading to lost or duplicated cylinder events.
+     *
      * If the mailbox is temporarily full (burst during pre-emption) the
-     * event is dropped — this is preferred over blocking in an ISR.
+     * event is dropped (chMBPostI returns MSG_TIMEOUT) — preferred over
+     * blocking in an ISR.
      */
-    chMBPostI(&g_cyl_mailbox, (msg_t)cyl_index);
+    chSysLockFromISR();
+    (void)chMBPostI(&g_cyl_mailbox, (msg_t)cyl_index);
+    chSysUnlockFromISR();
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

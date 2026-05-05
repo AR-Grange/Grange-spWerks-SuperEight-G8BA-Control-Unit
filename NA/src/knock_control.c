@@ -165,10 +165,36 @@ void knock_window_open(uint8_t cyl_index)
     knock_sensor_id_t sensor = sensor_for_cylinder(cyl_index);
     knock_sensor_state_t *s  = (knock_sensor_state_t *)&g_knock.sensors[sensor];
 
-    s->window_state              = KNOCK_WIN_SAMPLING;
-    s->window_open_angle         = crank_get_angle();
-    s_active_window_cyl[sensor]  = (int8_t)cyl_index;  /* per-sensor (M-2) */
+    /*
+     * SAFE-3 FIX: write order matters.  knock_adc_callback() (DMA IRQ) reads
+     * window_state and accumulates into s_window_peak_mv only when state is
+     * KNOCK_WIN_SAMPLING.  Previous order:
+     *     1. window_state = SAMPLING       ← ADC IRQ now starts accumulating
+     *     2. active_window_cyl = cyl       ← into the OLD cylinder's tracking
+     *     3. peak_mv = 0                   ← then we wipe that work
+     *
+     * If an ADC sample lands between (1) and (3) it gets credited to the
+     * previous cylinder's peak (still indexed by the same sensor) and is
+     * then erased.  Worse, if an open were performed for a different cyl
+     * on the same sensor (very rare with proper firing-order angles, but
+     * possible during sync acquisition), the IRQ would briefly attribute
+     * energy to the wrong cylinder.
+     *
+     * Correct order:
+     *   1. clear peak buffer
+     *   2. publish active cylinder for this sensor
+     *   3. flip state to SAMPLING last — ADC IRQ now sees fresh, consistent
+     *      tracking and a zeroed accumulator.
+     *
+     * This pattern is the standard "publish data first, then flag" idiom.
+     * On Cortex-M7 with volatile fields, store ordering at the C level is
+     * preserved within a single thread; the IRQ observes whatever the
+     * compiler emitted between the writes — the order above is failsafe.
+     */
     s_window_peak_mv[sensor]     = 0.0f;                /* per-sensor (M-2) */
+    s_active_window_cyl[sensor]  = (int8_t)cyl_index;  /* per-sensor (M-2) */
+    s->window_open_angle         = crank_get_angle();
+    s->window_state              = KNOCK_WIN_SAMPLING; /* arm last (SAFE-3) */
 }
 
 void knock_window_close(uint8_t cyl_index)
