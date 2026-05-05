@@ -48,7 +48,7 @@ The SC branch is a **fork of the NA branch** with the following design changes
 | Injectors | 650 cc/min | **850 cc/min** |
 | Soft-/hard-cut RPM | 7,600 / 7,800 | **7,300 / 7,500** |
 | MAP table axis | 20-105 kPa (10 pts) | **30-250 kPa (14 pts)** |
-| IAT table axis | −20-80 °C (11 pts) | **−20-100 °C (13 pts)** |
+| IAT table axis | -20-80 °C (11 pts) | **-20-100 °C (13 pts)** |
 | VE peak | 102 % @ 4500 RPM, 105 kPa | **110 % @ 4500 RPM, 150 kPa (boost)** |
 | Max ignition advance | 45° | **35°** |
 | Knock retard step | +1.5° / event | **+2.5° / event (more aggressive)** |
@@ -126,7 +126,7 @@ The Vortech V-7 YSi was chosen because:
 | thd_cyl_events | NORMALPRIO + 20 | Event-driven | Cylinder dispatch (fuel + ign + knock window open) |
 | thd_fast_ctrl | NORMALPRIO + 10 | 5 ms | Knock processing + CVVT control + dwell update |
 | thd_medium_ctrl | NORMALPRIO | 10 ms | **Fuel/ign recalc, lambda PID, rev limiter, boost PID** |
-| thd_slow_ctrl | NORMALPRIO − 5 | 50 ms | Engine protection (incl. boost safety check) + knock self-test |
+| thd_slow_ctrl | NORMALPRIO - 5 | 50 ms | Engine protection (incl. boost safety check) + knock self-test |
 | thd_diag | LOWPRIO | 250 ms | Diagnostics + TunerStudio output |
 
 The SC variant adds the boost-control PID step into `thd_medium_ctrl` (10 ms cadence
@@ -186,7 +186,7 @@ No SC-specific changes.
 
 - Same hardware path: 2 sensors, 6,800 Hz BPF, dynamic noise floor
 - **Detection window widened**: 8°-65° ATDC (was 10°-60° NA)
-- **Retard steps more aggressive**: +2.5° per event, −0.25° per clean cycle
+- **Retard steps more aggressive**: +2.5° per event, -0.25° per clean cycle
 - **Max retard**: 12° (was 10° NA) - more headroom under boost detonation
 - Per-sensor active-window tracking (M-2 fix preserved from NA)
 - Window-open ordering (SAFE-3 fix preserved from NA)
@@ -213,7 +213,7 @@ the BCV on sync loss.
 - **PID closed loop** on MAP error → BCV duty cycle (`G8BA_BOOST_KP/KI/KD`)
 - **Open-loop floor**: BCV held open (0 %) below `G8BA_BOOST_ENABLE_RPM = 2500`
 - **PWM hardware**: STM32H743 TIM5 CH1 → GPIOA PA0 (AF2), 40 Hz
-- **Anti-windup**: integrator clamped to [−40, +60] %duty equivalent
+- **Anti-windup**: integrator clamped to [-40, +60] %duty equivalent
 - **NaN/Inf guard**: any non-finite MAP/TPS input → BCV park OPEN, mode FAULT
 - **Boost safety**:
   - `boost_safety_check()` runs in `thd_slow_ctrl` (50 ms)
