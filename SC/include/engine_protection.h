@@ -1,11 +1,11 @@
 /**
  * @file    engine_protection.h
- * @brief   Module 6 — Engine Protection (SC variant — adds boost-overshoot cut)
+ * @brief   Module 6 - Engine Protection (SC variant - adds boost-overshoot cut)
  *
  * SC additions vs NA:
  *   - PROT_EVENT_BOOST_OVERSHOOT  flag (persistent MAP > 180 kPa)
  *   - PROT_EVENT_BOOST_HARDCUT    flag (instant MAP > 250 kPa)
- *   - PROT_EVENT_IAT_HOT          flag (post-intercooler IAT > 65 °C)
+ *   - PROT_EVENT_IAT_HOT          flag (post-intercooler IAT > 65 degC)
  *   - All thresholds tightened to reflect higher engine duty cycle
  *
  * Sequencing: boost safety check is OWNED by boost_control.c (called from
@@ -18,9 +18,9 @@
 
 #include "g8ba_config.h"
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * DATA TYPES
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 typedef enum {
     PROT_LEVEL_OK      = 0,
@@ -45,7 +45,7 @@ typedef enum {
     PROT_EVENT_SENSOR_FAULT     = 0x0400,
     /* SC additions */
     PROT_EVENT_BOOST_OVERSHOOT  = 0x0800,   /* Persistent overshoot       */
-    PROT_EVENT_BOOST_HARDCUT    = 0x1000,   /* Instant ≥250 kPa cut       */
+    PROT_EVENT_BOOST_HARDCUT    = 0x1000,   /* Instant >=250 kPa cut       */
     PROT_EVENT_IAT_HOT          = 0x2000,   /* IAT above SC limit         */
 } prot_event_flags_t;
 
@@ -89,9 +89,9 @@ typedef struct {
 
 extern volatile prot_status_t g_protection;
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PUBLIC API
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 g8ba_status_t engine_protection_init(void);
 void          engine_protection_update(const prot_inputs_t *inputs);

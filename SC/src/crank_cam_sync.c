@@ -1,36 +1,36 @@
 /**
  * @file    crank_cam_sync.c
- * @brief   Module 1 — Crank/Cam Synchronization Implementation
+ * @brief   Module 1 - Crank/Cam Synchronization Implementation
  *
  * 36-2 trigger wheel decoding:
- *   - RusEFI handles raw VR comparator → digital edge conversion
+ *   - RusEFI handles raw VR comparator -> digital edge conversion
  *   - We register a tooth callback to maintain our position counter
- *   - Gap detection (2 missing teeth = 20° silence) triggers sync reference
+ *   - Gap detection (2 missing teeth = 20deg silence) triggers sync reference
  *   - Cam Hall edge confirms phase (compression vs exhaust TDC)
  *
  * Crank angle computation:
- *   angle_360 = tooth_index × 10°  (each tooth = 360°/36 = 10°)
- *   angle_720 = angle_360 + phase_offset (0° or 360°, from cam)
+ *   angle_360 = tooth_index x 10deg  (each tooth = 360deg/36 = 10deg)
+ *   angle_720 = angle_360 + phase_offset (0deg or 360deg, from cam)
  */
 
 #include "crank_cam_sync.h"
 #include <string.h>
-#include <math.h>     /* fabsf() — used in cam phase window check */
+#include <math.h>     /* fabsf() - used in cam phase window check */
 
-/* ── RusEFI internal headers (adjust path to your RusEFI tree) ─────────── */
+/* -- RusEFI internal headers (adjust path to your RusEFI tree) ----------- */
 #include "trigger_central.h"
 #include "engine_configuration.h"
 #include "os_util.h"    /* getTimeNowUs() */
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * CONSTANTS
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 /** Firing order LUT: firing_order[event_index] = cylinder_index (0-based) */
 static const uint8_t FIRING_ORDER[G8BA_CYLINDERS] = G8BA_FIRING_ORDER;
 
 /**
- * TDC crank angles (absolute, 0–720°) for each cylinder in firing order.
+ * TDC crank angles (absolute, 0-720deg) for each cylinder in firing order.
  * Cylinder 0 (cyl #1) TDC is the reference angle G8BA_TDC_CYL1_OFFSET_DEG.
  * Each subsequent firing event is offset by G8BA_FIRING_INTERVAL.
  */
@@ -39,9 +39,9 @@ static floatdeg_t s_tdc_angles[G8BA_CYLINDERS];
 /** RPM low-pass filter time constant (lower = faster, higher = smoother) */
 #define RPM_LPF_ALPHA   0.25f
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * MODULE STATE
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 volatile engine_position_t g_engine_pos;
 volatile cam_state_t       g_cam[CAM_COUNT];
@@ -50,22 +50,22 @@ static uint32_t s_sync_count          = 0u;
 static uint8_t  s_event_index         = 0u;    /* position in firing order  */
 static bool     s_phase_high          = false; /* cam phase offset applied  */
 
-/* H-3: cam phase confirmation state — requires 2 consecutive matches */
+/* H-3: cam phase confirmation state - requires 2 consecutive matches */
 static uint8_t  s_phase_confirm_count    = 0u;
 static bool     s_phase_high_candidate   = false;
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PRIVATE HELPERS
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 /** Precompute TDC crank angles for all 8 cylinders */
 static void compute_tdc_table(void)
 {
     for (uint8_t i = 0u; i < G8BA_CYLINDERS; i++) {
-        /* Firing event i fires G8BA_FIRING_INTERVAL × i after cyl-1 TDC */
+        /* Firing event i fires G8BA_FIRING_INTERVAL x i after cyl-1 TDC */
         floatdeg_t angle = G8BA_TDC_CYL1_OFFSET_DEG
                          + ((floatdeg_t)i * G8BA_FIRING_INTERVAL);
-        /* Wrap to 0–720 */
+        /* Wrap to 0-720 */
         while (angle >= G8BA_CRANK_ANGLE_CYCLE) {
             angle -= G8BA_CRANK_ANGLE_CYCLE;
         }
@@ -78,16 +78,16 @@ static void compute_tdc_table(void)
 static rpm_t period_to_rpm(us_t period_us)
 {
     if (period_us == 0u) return 0u;
-    /* One tooth = 10° = 10/360 revolution
-     * RPM = (10/360) / (period_s) × 60
-     *      = 10 × 60 / (360 × period_s)
-     *      = 1,666,667 / period_us  (with period in µs) */
+    /* One tooth = 10deg = 10/360 revolution
+     * RPM = (10/360) / (period_s) x 60
+     *      = 10 x 60 / (360 x period_s)
+     *      = 1,666,667 / period_us  (with period in us) */
     return (rpm_t)(1666667uL / period_us);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PUBLIC IMPLEMENTATION
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 g8ba_status_t crank_cam_sync_init(void)
 {
@@ -105,7 +105,7 @@ g8ba_status_t crank_cam_sync_init(void)
     s_sync_count = 0u;
     s_event_index = 0u;
 
-    /* ── Configure RusEFI trigger ─────────────────────────────────────── */
+    /* -- Configure RusEFI trigger --------------------------------------- */
     /*
      * engineConfiguration->trigger.type = TT_TOOTHED_WHEEL_36_2;
      * engineConfiguration->trigger.customTotalToothCount = 36;
@@ -125,7 +125,7 @@ void crank_tooth_callback(uint8_t tooth_index, us_t timestamp_us)
 {
     /*
      * Called from RusEFI TriggerCentral ISR after each decoded crank tooth.
-     * tooth_index: 0 = first tooth after gap, 1–33 = subsequent teeth.
+     * tooth_index: 0 = first tooth after gap, 1-33 = subsequent teeth.
      * This function must be ISR-safe: no malloc, no mutex, no blocking.
      */
     us_t prev_ts   = g_engine_pos.last_tooth_us;
@@ -135,11 +135,11 @@ void crank_tooth_callback(uint8_t tooth_index, us_t timestamp_us)
     g_engine_pos.tooth_period_us = period_us;
     g_engine_pos.sync_tooth     = tooth_index;
 
-    /* Crank angle within 360° revolution */
+    /* Crank angle within 360deg revolution */
     floatdeg_t angle_360 = (floatdeg_t)tooth_index * G8BA_TRIGGER_TOOTH_ANGLE;
     g_engine_pos.crank_angle_360 = angle_360;
 
-    /* Absolute 720° angle depends on phase (confirmed by cam sensor) */
+    /* Absolute 720deg angle depends on phase (confirmed by cam sensor) */
     if (g_engine_pos.phase_confirmed) {
         g_engine_pos.crank_angle_720 = angle_360 + (s_phase_high ? 360.0f : 0.0f);
         if (g_engine_pos.sync_state == SYNC_PARTIAL) {
@@ -147,7 +147,7 @@ void crank_tooth_callback(uint8_t tooth_index, us_t timestamp_us)
             s_sync_count++;
         }
     } else {
-        /* Phase unknown — stay in PARTIAL, use 360° position only */
+        /* Phase unknown - stay in PARTIAL, use 360deg position only */
         g_engine_pos.crank_angle_720 = angle_360;
     }
 
@@ -182,9 +182,9 @@ void cam_edge_callback(cam_id_t cam, us_t timestamp_us)
      * to cylinder #1 TDC. We compare actual crank angle at cam edge vs
      * expected to determine phase offset.
      *
-     * For G8BA, intake cam tooth fires near 360° ATDC of cyl #1.
-     * If crank_angle_360 is near expected → we are in compression stroke (phase=0)
-     * Otherwise → phase = 360° offset.
+     * For G8BA, intake cam tooth fires near 360deg ATDC of cyl #1.
+     * If crank_angle_360 is near expected -> we are in compression stroke (phase=0)
+     * Otherwise -> phase = 360deg offset.
      */
 
     if (cam >= CAM_COUNT) return;
@@ -196,17 +196,17 @@ void cam_edge_callback(cam_id_t cam, us_t timestamp_us)
     g_cam[cam].valid        = true;
 
     /* Measure cam phase: difference from expected tooth position */
-    /* Expected angle for B1 intake cam is approximately 360° into cycle */
+    /* Expected angle for B1 intake cam is approximately 360deg into cycle */
     /* (calibrate this value on actual engine) */
     static const floatdeg_t CAM_EXPECTED_ANGLE[CAM_COUNT] = {
-        [CAM_B1_INTAKE]  = 25.0f,   /* °CA after gap tooth (calibrate) */
+        [CAM_B1_INTAKE]  = 25.0f,   /* degCA after gap tooth (calibrate) */
         [CAM_B1_EXHAUST] = 185.0f,
         [CAM_B2_INTAKE]  = 205.0f,
         [CAM_B2_EXHAUST] = 15.0f,
     };
 
     floatdeg_t raw_phase = elapsed_since_gap - CAM_EXPECTED_ANGLE[cam];
-    /* Normalise to ±180° */
+    /* Normalise to +/-180deg */
     while (raw_phase >  180.0f) raw_phase -= 360.0f;
     while (raw_phase < -180.0f) raw_phase += 360.0f;
 
@@ -215,31 +215,31 @@ void cam_edge_callback(cam_id_t cam, us_t timestamp_us)
     /* H-3: Confirm engine phase using Bank 1 intake cam
      *
      * Safety requirement: phase determination must be validated by
-     * (a) cam edge arriving within ±CAM_PHASE_CONFIRM_WINDOW_DEG of the
+     * (a) cam edge arriving within +/-CAM_PHASE_CONFIRM_WINDOW_DEG of the
      *     known expected crank angle, AND
      * (b) CAM_PHASE_MIN_CONFIRMS consecutive identical conclusions.
      *
-     * A wrong phase (off by 360°) would fire all 8 cylinders at the
-     * wrong TDC (exhaust instead of compression) — catastrophic.
+     * A wrong phase (off by 360deg) would fire all 8 cylinders at the
+     * wrong TDC (exhaust instead of compression) - catastrophic.
      */
     if (cam == CAM_B1_INTAKE && !g_engine_pos.phase_confirmed) {
         float expected = CAM_EXPECTED_ANGLE[CAM_B1_INTAKE];
         float deviation = crank_now - expected;
 
-        /* Normalise deviation to ±180° */
+        /* Normalise deviation to +/-180deg */
         while (deviation >  180.0f) deviation -= 360.0f;
         while (deviation < -180.0f) deviation += 360.0f;
 
         if (fabsf(deviation) > CAM_PHASE_CONFIRM_WINDOW_DEG) {
             /*
-             * Cam edge arrived outside expected window — likely noise or
+             * Cam edge arrived outside expected window - likely noise or
              * misfire. Reset confirmation counter and DO NOT update phase.
              */
             s_phase_confirm_count  = 0u;
             return;
         }
 
-        /* Edge is within window — determine phase candidate */
+        /* Edge is within window - determine phase candidate */
         bool candidate = (crank_now > 180.0f);
 
         if (s_phase_confirm_count == 0u) {
@@ -247,7 +247,7 @@ void cam_edge_callback(cam_id_t cam, us_t timestamp_us)
             s_phase_high_candidate = candidate;
             s_phase_confirm_count  = 1u;
         } else if (candidate == s_phase_high_candidate) {
-            /* Consistent with previous — increment confirmation count */
+            /* Consistent with previous - increment confirmation count */
             s_phase_confirm_count++;
             if (s_phase_confirm_count >= CAM_PHASE_MIN_CONFIRMS) {
                 /* PHASE LOCKED */
@@ -257,7 +257,7 @@ void cam_edge_callback(cam_id_t cam, us_t timestamp_us)
             }
         } else {
             /*
-             * Inconsistent with previous conclusion — could be sensor
+             * Inconsistent with previous conclusion - could be sensor
              * noise mid-cycle. Reset and start over from this candidate.
              */
             s_phase_high_candidate = candidate;

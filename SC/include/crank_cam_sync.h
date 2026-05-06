@@ -1,9 +1,9 @@
 /**
  * @file    crank_cam_sync.h
- * @brief   Module 1 — Crank/Cam Synchronization
+ * @brief   Module 1 - Crank/Cam Synchronization
  *
  * Decodes 36-2 VR crank wheel and Hall-effect cam sensors to determine:
- *   - Absolute crank position (°CA, 0–720)
+ *   - Absolute crank position (degCA, 0-720)
  *   - Engine phase (compression vs exhaust TDC)
  *   - Per-cylinder event scheduling base
  *
@@ -17,9 +17,9 @@
 
 #include "g8ba_config.h"
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * DATA TYPES
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 /** Synchronization state machine states */
 typedef enum {
@@ -37,39 +37,39 @@ typedef enum {
     CAM_COUNT      = 4,
 } cam_id_t;
 
-/** Engine position snapshot — updated every tooth event */
+/** Engine position snapshot - updated every tooth event */
 typedef struct {
-    floatdeg_t  crank_angle_720;    /* absolute angle 0–720 °CA           */
-    floatdeg_t  crank_angle_360;    /* crank angle 0–360 °CA              */
+    floatdeg_t  crank_angle_720;    /* absolute angle 0-720 degCA           */
+    floatdeg_t  crank_angle_360;    /* crank angle 0-360 degCA              */
     rpm_t       rpm;                /* instantaneous RPM                   */
     rpm_t       rpm_filtered;       /* low-pass filtered RPM               */
     uint8_t     sync_tooth;         /* tooth number since gap (0-33)       */
     sync_state_t sync_state;        /* current synchronization state       */
     bool        phase_confirmed;    /* cam sensor confirmed phase          */
     uint8_t     current_cylinder;   /* cylinder index (0-7) next to fire   */
-    us_t        last_tooth_us;      /* timestamp of last tooth (µs)        */
-    us_t        tooth_period_us;    /* last tooth-to-tooth period (µs)     */
+    us_t        last_tooth_us;      /* timestamp of last tooth (us)        */
+    us_t        tooth_period_us;    /* last tooth-to-tooth period (us)     */
 } engine_position_t;
 
 /** Cam sensor state */
 typedef struct {
     cam_id_t    id;
-    floatdeg_t  phase_deg;          /* measured cam phase (°CA)           */
-    floatdeg_t  target_phase_deg;   /* commanded cam phase (°CA)          */
+    floatdeg_t  phase_deg;          /* measured cam phase (degCA)           */
+    floatdeg_t  target_phase_deg;   /* commanded cam phase (degCA)          */
     us_t        last_edge_us;       /* timestamp of last cam edge          */
     bool        valid;              /* sensor reading is valid             */
 } cam_state_t;
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * MODULE STATE (read-only external access)
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 extern volatile engine_position_t g_engine_pos;
 extern volatile cam_state_t       g_cam[CAM_COUNT];
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PUBLIC API
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 /**
  * @brief  Initialize crank/cam sync module.
@@ -81,7 +81,7 @@ g8ba_status_t crank_cam_sync_init(void);
 
 /**
  * @brief  Callback invoked by RusEFI TriggerCentral on every crank tooth.
- *         Called from interrupt context — must be ISR-safe (no blocking).
+ *         Called from interrupt context - must be ISR-safe (no blocking).
  * @param  tooth_index  0-based tooth number (gap = tooth 0)
  * @param  timestamp_us Tooth arrival timestamp in microseconds
  */
@@ -95,8 +95,8 @@ void crank_tooth_callback(uint8_t tooth_index, us_t timestamp_us);
 void cam_edge_callback(cam_id_t cam, us_t timestamp_us);
 
 /**
- * @brief  Return current absolute crank angle (0–720°).
- *         Thread-safe — uses atomic read.
+ * @brief  Return current absolute crank angle (0-720deg).
+ *         Thread-safe - uses atomic read.
  */
 floatdeg_t crank_get_angle(void);
 
@@ -113,7 +113,7 @@ sync_state_t crank_get_sync_state(void);
 /**
  * @brief  Calculate crank angle at which cylinder `cyl` reaches TDC compression.
  * @param  cyl  Cylinder index 0-7 (maps via firing order)
- * @return Absolute crank angle 0–720 °CA
+ * @return Absolute crank angle 0-720 degCA
  */
 floatdeg_t crank_tdc_angle(uint8_t cyl);
 
@@ -125,13 +125,13 @@ uint8_t crank_next_cylinder(void);
 /**
  * @brief  Get cam phase measurement for specified cam channel.
  * @param  cam   Cam channel
- * @param  out   Pointer to receive phase in °CA
+ * @param  out   Pointer to receive phase in degCA
  * @return G8BA_OK or G8BA_ERR_SENSOR if signal lost
  */
 g8ba_status_t cam_get_phase(cam_id_t cam, floatdeg_t *out);
 
 /**
- * @brief  Reset sync state — called after engine stall or error.
+ * @brief  Reset sync state - called after engine stall or error.
  */
 void crank_cam_sync_reset(void);
 

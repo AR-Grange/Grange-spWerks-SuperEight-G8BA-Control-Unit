@@ -1,17 +1,17 @@
 /**
  * @file    ignition_control.c
- * @brief   Module 3 — Ignition Timing Control Implementation
+ * @brief   Module 3 - Ignition Timing Control Implementation
  *
- * [IG-1 FIX] Internal 16×16 advance table removed; delegates to
- *             ign_map_get_base_advance() (ignition_map.c — sole owner).
+ * [IG-1 FIX] Internal 16x16 advance table removed; delegates to
+ *             ign_map_get_base_advance() (ignition_map.c - sole owner).
  * [IG-1 FIX] Per-cylinder knock retard applied via knock_get_retard(i).
  *             Previously all 8 cylinders received the same bank-level
- *             worst-case retard — now each cylinder is retarded only by
+ *             worst-case retard - now each cylinder is retarded only by
  *             its own accumulated retard.
  *
  * Dwell scheduling:
- *   dwell_start_angle = spark_angle − dwell_angle
- *   where dwell_angle = (dwell_ms × rpm / 60000) × 360°
+ *   dwell_start_angle = spark_angle - dwell_angle
+ *   where dwell_angle = (dwell_ms x rpm / 60000) x 360deg
  */
 
 #include "ignition_control.h"
@@ -21,22 +21,22 @@
 #include <string.h>
 #include <math.h>
 
-/* ── RusEFI headers ──────────────────────────────────────────────────────── */
+/* -- RusEFI headers -------------------------------------------------------- */
 #include "scheduler.h"
 #include "efi_gpio.h"
 
 /*
  * IG-1 FIX: Internal advance table removed.
  *
- * Previously this module maintained a private 16×16 advance table (RPM×load%)
- * duplicating calibration data owned by ignition_map.c (16×10, RPM×MAP kPa).
+ * Previously this module maintained a private 16x16 advance table (RPMxload%)
+ * duplicating calibration data owned by ignition_map.c (16x10, RPMxMAP kPa).
  * Two separate tables caused inconsistency: different values, different axes.
  *
  * ignition_map.c is now the SOLE owner of base advance data.
  * Base advance is obtained via ign_map_get_base_advance(rpm, map_kpa).
  *
  * NOTE: In this ECU, load_pct passed to ignition_calc_advance() is computed
- * as (map_kpa / 100 × 100 = map_kpa) — numerically equal to MAP in kPa.
+ * as (map_kpa / 100 x 100 = map_kpa) - numerically equal to MAP in kPa.
  * It is passed directly to ign_map_get_base_advance() which expects kPa.
  * If load_pct is ever decoupled from MAP (e.g., MAF-based), this call site
  * must be updated to pass actual map_kpa as a separate parameter.
@@ -46,19 +46,19 @@
 static const float DWELL_VBATT[] = {11.0f, 12.0f, 14.5f};
 static const float DWELL_MS[]    = {4.5f,  3.5f,  2.8f };
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * MODULE STATE
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 volatile ign_status_t g_ignition;
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PRIVATE HELPERS
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
-/* advance_table_lookup() removed — IG-1 FIX: use ign_map_get_base_advance() */
+/* advance_table_lookup() removed - IG-1 FIX: use ign_map_get_base_advance() */
 
-/** CLT correction — retard when cold, slight advance when hot (to max) */
+/** CLT correction - retard when cold, slight advance when hot (to max) */
 static float clt_advance_corr(float clt_c)
 {
     if (clt_c < 20.0f)  return -5.0f;   /* cold retard */
@@ -67,14 +67,14 @@ static float clt_advance_corr(float clt_c)
     return 0.0f;
 }
 
-/** IAT correction — retard timing as charge gets hotter (knock risk) */
+/** IAT correction - retard timing as charge gets hotter (knock risk) */
 static float iat_advance_corr(float iat_c)
 {
     if (iat_c < 20.0f) return  1.0f;
     if (iat_c < 40.0f) return  0.0f;
     if (iat_c < 60.0f) return -1.0f;
     if (iat_c < 80.0f) return -2.5f;
-    return -4.0f;   /* > 80°C */
+    return -4.0f;   /* > 80degC */
 }
 
 /** Compute dwell duration from battery voltage via interpolation */
@@ -99,9 +99,9 @@ static floatdeg_t dwell_ms_to_deg(float dwell_ms, rpm_t rpm)
     return dwell_ms * (float)rpm * 360.0f / 60000.0f;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PUBLIC IMPLEMENTATION
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 g8ba_status_t ignition_init(void)
 {
@@ -178,15 +178,15 @@ void ignition_calc_advance(rpm_t rpm, float load_pct,
      * c->dwell_start and c->spark_angle from interrupt context while
      * this thread loop writes them.  A torn write (ISR fires between
      * writing spark_angle and dwell_start) would schedule dwell from
-     * the old position with a new spark angle — coil over-charge or
+     * the old position with a new spark angle - coil over-charge or
      * misfired spark.
      *
      * Fix: compute ALL new values into locals first, then write the
      * safety-critical angles inside chSysLock() so the ISR either
-     * sees the old complete set OR the new complete set — never a mix.
+     * sees the old complete set OR the new complete set - never a mix.
      *
      * Write order (most critical field last):
-     *   1. advance_deg  (diagnostic only — not read by ISR)
+     *   1. advance_deg  (diagnostic only - not read by ISR)
      *   2. dwell_start  (ISR uses this to schedule coil_on)
      *   3. spark_angle  (ISR uses this to schedule coil_off)
      *   4. enabled      (ISR checks this before scheduling)
@@ -201,10 +201,10 @@ void ignition_calc_advance(rpm_t rpm, float load_pct,
          *
          * Previously all 8 cylinders received the same bank-level worst-case
          * retard passed from main.c (g_knock.total_retard_b1/b2 maximum).
-         * If cylinder 3 alone knocked at 10°, ALL 8 cylinders were retarded 10°.
+         * If cylinder 3 alone knocked at 10deg, ALL 8 cylinders were retarded 10deg.
          *
          * Now each cylinder is retarded by only its own accumulated knock retard.
-         * Cylinders that did not knock are unaffected — preserving power output
+         * Cylinders that did not knock are unaffected - preserving power output
          * on the non-knocking cylinders.  The knock_retard parameter above
          * (bank-level) is retained only for the diagnostic output struct.
          */
@@ -222,11 +222,11 @@ void ignition_calc_advance(rpm_t rpm, float load_pct,
 
         bool new_enabled = (g_ignition.soft_cut_mask & (1u << i)) != 0u;
 
-        /* Write atomically — ISR cannot fire between these stores */
+        /* Write atomically - ISR cannot fire between these stores */
         chSysLock();
         coil_state_t *c = (coil_state_t *)&g_ignition.coils[i];
         c->advance_deg = total_i;   /* per-cylinder actual advance (diagnostic) */
-        c->dwell_start = new_dwell; /* before spark_angle — see order note       */
+        c->dwell_start = new_dwell; /* before spark_angle - see order note       */
         c->spark_angle = new_spark;
         c->enabled     = new_enabled;
         chSysUnlock();
@@ -264,15 +264,15 @@ void ignition_set_mode(ign_mode_t mode)
     g_ignition.mode = mode;
 
     /*
-     * SAFE-2 FIX: propagate mode → coils[].enabled immediately.
+     * SAFE-2 FIX: propagate mode -> coils[].enabled immediately.
      *
      * Previously the function updated only soft_cut_mask, leaving coils[].enabled
      * stale until the next ignition_calc_advance() pass.  But the OFF and HARD_CUT
      * branches of ignition_calc_advance() return EARLY and never touch enabled,
-     * so once we transitioned RUNNING → HARD_CUT the per-cylinder enable flags
+     * so once we transitioned RUNNING -> HARD_CUT the per-cylinder enable flags
      * stayed `true`.  ignition_schedule_spark() only checks c->enabled (not
      * g_ignition.mode), so a pending angle-scheduled fire-event from RusEFI
-     * could still drive the coil during a hard-cut — defeating the rev-limit
+     * could still drive the coil during a hard-cut - defeating the rev-limit
      * and the sync-loss emergency cut.
      *
      * Fix: clear mask AND every coils[].enabled atomically here on entry to
@@ -329,7 +329,7 @@ void ignition_coil_on_isr(uint8_t cyl_index)
 void ignition_coil_off_isr(uint8_t cyl_index)
 {
     if (cyl_index >= G8BA_CYLINDERS) return;
-    /* Drive coil GPIO LOW — current collapse produces spark
+    /* Drive coil GPIO LOW - current collapse produces spark
      * efiSetPinValue(coil_pins[cyl_index], false); */
     ((coil_state_t *)&g_ignition.coils[cyl_index])->coil_active = false;
     ((coil_state_t *)&g_ignition.coils[cyl_index])->fire_count++;

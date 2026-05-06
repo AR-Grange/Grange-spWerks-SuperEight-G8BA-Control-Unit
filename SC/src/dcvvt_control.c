@@ -1,14 +1,14 @@
 /**
  * @file    dcvvt_control.c
- * @brief   Module 4 — D-CVVT Control Implementation
+ * @brief   Module 4 - D-CVVT Control Implementation
  *
  * PID position control for 4 cam phasers.
  * OCV PWM output: 0% = full retard (park), 50% = hold, 100% = full advance.
  * Actual cam phase is read from g_cam[] populated by crank_cam_sync.
  *
  * Enable conditions:
- *   - CLT > 60°C (oil must be warm enough to build pressure)
- *   - Oil temp > 50°C
+ *   - CLT > 60degC (oil must be warm enough to build pressure)
+ *   - Oil temp > 50degC
  *   - RPM > 500 (idle and above)
  *   - Sync state == SYNC_FULL
  */
@@ -21,13 +21,13 @@
 
 #include "dcvvt_hw.h"
 
-/* ══════════════════════════════════════════════════════════════════════════
- * VVT TARGET TABLES (RPM × Load %)
- * 8×8 simplified — expand to 16×16 after dyno calibration
+/* ==========================================================================
+ * VVT TARGET TABLES (RPM x Load %)
+ * 8x8 simplified - expand to 16x16 after dyno calibration
  *
- * Intake advance: positive = advance (°CA)
- * Exhaust retard: positive = retard  (°CA, from fully-retarded home)
- * ══════════════════════════════════════════════════════════════════════════ */
+ * Intake advance: positive = advance (degCA)
+ * Exhaust retard: positive = retard  (degCA, from fully-retarded home)
+ * ========================================================================== */
 
 #define VVT_TABLE_ROWS  8u
 #define VVT_TABLE_COLS  8u
@@ -37,7 +37,7 @@ static const uint16_t VVT_RPM_AXIS[VVT_TABLE_ROWS] =
 static const float VVT_LOAD_AXIS[VVT_TABLE_COLS] =
     {10, 25, 40, 55, 70, 85, 100, 115};
 
-/* Intake cam advance target (°CA) */
+/* Intake cam advance target (degCA) */
 static const float VVT_IN_TARGET[VVT_TABLE_ROWS][VVT_TABLE_COLS] = {
 /*       10   25   40   55   70   85  100  115 */
 /* 800 */{0,   5,   8,  10,  10,  10,  10,   0},
@@ -50,7 +50,7 @@ static const float VVT_IN_TARGET[VVT_TABLE_ROWS][VVT_TABLE_COLS] = {
 /*7800 */{0,   5,  12,  20,  28,  32,  35,  20},
 };
 
-/* Exhaust cam retard target (°CA from home) */
+/* Exhaust cam retard target (degCA from home) */
 static const float VVT_EX_TARGET[VVT_TABLE_ROWS][VVT_TABLE_COLS] = {
 /*       10   25   40   55   70   85  100  115 */
 /* 800 */{0,   3,   5,   5,   5,   5,   5,   0},
@@ -63,15 +63,15 @@ static const float VVT_EX_TARGET[VVT_TABLE_ROWS][VVT_TABLE_COLS] = {
 /*7800 */{0,   0,   5,  10,  14,  16,  16,  12},
 };
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * MODULE STATE
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 volatile cvvt_status_t g_cvvt;
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PRIVATE HELPERS
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 static float vvt_table_lookup(const float table[VVT_TABLE_ROWS][VVT_TABLE_COLS],
                                rpm_t rpm, float load_pct)
@@ -142,13 +142,13 @@ static void write_ocv_duty(phaser_id_t phaser, float duty_pct)
     dcvvt_hw_set_duty(phaser, duty_pct);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PUBLIC IMPLEMENTATION
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 g8ba_status_t dcvvt_init(void)
 {
-    /* Initialise TIM3/TIM4 hardware — all channels start at 0% (park) */
+    /* Initialise TIM3/TIM4 hardware - all channels start at 0% (park) */
     g8ba_status_t hw_st = dcvvt_hw_init();
     if (hw_st != G8BA_OK) return hw_st;
 
@@ -179,7 +179,7 @@ void dcvvt_update(rpm_t rpm, float load_pct, float oil_temp, float clt_c)
     bool now_enabled = dcvvt_is_enabled();
 
     /*
-     * HW-5 FIX: Reset PID integrators on disabled → enabled transition.
+     * HW-5 FIX: Reset PID integrators on disabled -> enabled transition.
      *
      * When CVVT is disabled (cold engine, stall, or oil-temp gate), the
      * PID integrators are not written but retain their values from the last
@@ -220,7 +220,7 @@ void dcvvt_update(rpm_t rpm, float load_pct, float oil_temp, float clt_c)
         p->sensor_valid = (ret == G8BA_OK);
 
         if (!p->sensor_valid) {
-            /* Sensor fault — hold current duty to maintain position */
+            /* Sensor fault - hold current duty to maintain position */
             dcvvt_hold(id);
             continue;
         }
@@ -228,7 +228,7 @@ void dcvvt_update(rpm_t rpm, float load_pct, float oil_temp, float clt_c)
         p->actual_deg = measured;
         p->error_deg  = p->target_deg - p->actual_deg;
 
-        /* Deadband: within ±G8BA_CVVT_DEADBAND_DEG, hold at 50% */
+        /* Deadband: within +/-G8BA_CVVT_DEADBAND_DEG, hold at 50% */
         if (fabsf(p->error_deg) < G8BA_CVVT_DEADBAND_DEG) {
             p->ocv_duty_pct = 50.0f;
             p->at_target    = true;
@@ -310,9 +310,9 @@ bool dcvvt_is_enabled(void)
 {
     /*
      * M-1 FIX: the original code declared `float clt = 0.0f` and then
-     * immediately discarded it with `(void)clt`, so the CLT > 60°C
+     * immediately discarded it with `(void)clt`, so the CLT > 60degC
      * enable condition (documented in both the file header and the .h
-     * doxygen) was never evaluated — CVVT could activate on a cold engine
+     * doxygen) was never evaluated - CVVT could activate on a cold engine
      * before the oil reached operating viscosity.
      *
      * CLT is now passed in via dcvvt_update() and stored in g_cvvt.clt_c.
@@ -332,7 +332,7 @@ floatdeg_t dcvvt_get_actual_phase(phaser_id_t phaser)
 void dcvvt_hold(phaser_id_t phaser)
 {
     /*
-     * H-4 FIX: the original body was `(void)p` — a complete no-op.
+     * H-4 FIX: the original body was `(void)p` - a complete no-op.
      *
      * Consequence: when a cam sensor fails mid-run, dcvvt_update() calls
      * dcvvt_hold() and then `continue`s to the next phaser, leaving the
@@ -342,7 +342,7 @@ void dcvvt_hold(phaser_id_t phaser)
      * would drift freely under oil pressure rather than holding position.
      *
      * Fix: re-assert the frozen duty value back to the PWM peripheral.
-     * This is idempotent — calling write_ocv_duty with the same value
+     * This is idempotent - calling write_ocv_duty with the same value
      * every cycle keeps the solenoid at the last known good position
      * without making any PID changes.
      */

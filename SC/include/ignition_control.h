@@ -1,13 +1,13 @@
 /**
  * @file    ignition_control.h
- * @brief   Module 3 — Ignition Timing Control
+ * @brief   Module 3 - Ignition Timing Control
  *
  * Manages coil-on-plug (COP) ignition for 8-cylinder G8BA.
  * Advance angle is computed from:
- *   ADVANCE = BASE_TABLE(rpm, load) + CLT_corr + IAT_corr − KNOCK_retard
+ *   ADVANCE = BASE_TABLE(rpm, load) + CLT_corr + IAT_corr - KNOCK_retard
  *
  * Dwell is scheduled as a fixed charge window (G8BA_IGN_COIL_DWELL_MS)
- * ending at the computed spark angle (°BTDC).
+ * ending at the computed spark angle (degBTDC).
  *
  * Soft rev-cut alternates cylinders; hard cut removes all spark.
  */
@@ -17,9 +17,9 @@
 
 #include "g8ba_config.h"
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * DATA TYPES
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 /** Ignition mode */
 typedef enum {
@@ -33,7 +33,7 @@ typedef enum {
 /** Per-cylinder ignition state */
 typedef struct {
     uint8_t     cyl_index;
-    floatdeg_t  advance_deg;   /* advance angle (°BTDC), positive = advance */
+    floatdeg_t  advance_deg;   /* advance angle (degBTDC), positive = advance */
     floatdeg_t  spark_angle;   /* absolute crank angle of spark event     */
     floatdeg_t  dwell_start;   /* absolute crank angle to begin dwell     */
     bool        coil_active;   /* coil currently charging                 */
@@ -43,7 +43,7 @@ typedef struct {
 
 /** Ignition advance breakdown for diagnostics */
 typedef struct {
-    float   base;          /* table lookup value (°BTDC)                 */
+    float   base;          /* table lookup value (degBTDC)                 */
     float   clt_corr;      /* coolant temperature correction             */
     float   iat_corr;      /* inlet air temperature correction           */
     float   knock_retard;  /* knock control retard (negative)            */
@@ -56,19 +56,19 @@ typedef struct {
     ign_advance_t   advance_breakdown;
     ign_mode_t      mode;
     float           dwell_ms;      /* current coil charge time (ms)      */
-    uint8_t         soft_cut_mask; /* bitmask — which cylinders are cut   */
+    uint8_t         soft_cut_mask; /* bitmask - which cylinders are cut   */
     uint32_t        total_sparks;  /* total spark events since boot       */
 } ign_status_t;
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * MODULE STATE
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 extern volatile ign_status_t g_ignition;
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PUBLIC API
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 /**
  * @brief  Initialise ignition module.
@@ -82,9 +82,9 @@ g8ba_status_t ignition_init(void);
  *         Should be called every TASK_PERIOD_MEDIUM_MS.
  * @param  rpm          Current engine speed
  * @param  load_pct     Engine load (MAP/MAF based %)
- * @param  clt_c        Coolant temperature (°C)
- * @param  iat_c        Inlet air temperature (°C)
- * @param  knock_retard Active knock retard from knock module (°)
+ * @param  clt_c        Coolant temperature (degC)
+ * @param  iat_c        Inlet air temperature (degC)
+ * @param  knock_retard Active knock retard from knock module (deg)
  * @param[out] out      Calculated advance breakdown
  */
 void ignition_calc_advance(rpm_t rpm, float load_pct,
@@ -113,7 +113,7 @@ void ignition_set_mode(ign_mode_t mode);
 void ignition_set_soft_cut_mask(uint8_t mask);
 
 /**
- * @brief  Return current advance angle for cylinder `cyl` (°BTDC).
+ * @brief  Return current advance angle for cylinder `cyl` (degBTDC).
  */
 float ignition_get_advance(uint8_t cyl_index);
 
@@ -124,13 +124,13 @@ float ignition_get_advance(uint8_t cyl_index);
 void ignition_update_dwell(float vbatt);
 
 /**
- * @brief  ISR-safe coil drive callback — fires when dwell window opens.
+ * @brief  ISR-safe coil drive callback - fires when dwell window opens.
  *         Registered with RusEFI angle-based scheduler.
  */
 void ignition_coil_on_isr(uint8_t cyl_index);
 
 /**
- * @brief  ISR-safe spark callback — cuts coil current to produce spark.
+ * @brief  ISR-safe spark callback - cuts coil current to produce spark.
  *         Registered with RusEFI angle-based scheduler.
  */
 void ignition_coil_off_isr(uint8_t cyl_index);

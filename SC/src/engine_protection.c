@@ -1,21 +1,21 @@
 /**
  * @file    engine_protection.c
- * @brief   Module 6 — Engine Protection (SC variant) Implementation
+ * @brief   Module 6 - Engine Protection (SC variant) Implementation
  *
  * SC additions vs NA:
  *   - Consumes boost_safety_check() result and sets PROT_EVENT_BOOST_*
  *   - IAT-hot warning gated on G8BA_IAT_BOOST_LIMIT_C
- *   - Tightened thermal thresholds (CLT, oil temp) — see g8ba_config.h
+ *   - Tightened thermal thresholds (CLT, oil temp) - see g8ba_config.h
  *   - prot_is_hard_cut_active() now also accounts for boost hard cut
  *
  * Sequencing (highest priority first, unchanged from NA):
- *   1. Sync lost  → emergency cut
+ *   1. Sync lost  -> emergency cut
  *   2. Boost hard cut (latched by boost_safety_check)
  *   3. CLT overtemp graduated
  *   4. Oil pressure low graduated
  *   5. Oil temp high (power reduction)
- *   6. Boost overshoot (persistent) — fuel cut, ignition stays normal
- *   7. IAT hot warn — informational only
+ *   6. Boost overshoot (persistent) - fuel cut, ignition stays normal
+ *   7. IAT hot warn - informational only
  *   8. Rev limit (soft / hard)
  */
 
@@ -27,9 +27,9 @@
 #include "crank_cam_sync.h"
 #include <string.h>
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * CONSTANTS
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 static const uint16_t OIL_PRESS_RPM_AXIS[]  = {600, 1000, 2000, 3000, 7500};
 /*
@@ -45,15 +45,15 @@ static const float    OIL_PRESS_MIN_KPA[]   = {100, 150, 190, 220, 240};
 #define OIL_TEMP_HYSTERESIS_C   5.0f
 #define IAT_HOT_HYSTERESIS_C    5.0f       /* SC */
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * MODULE STATE
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 volatile prot_status_t g_protection;
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PRIVATE HELPERS
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 static float oil_press_min_for_rpm(rpm_t rpm)
 {
@@ -111,7 +111,7 @@ static prot_level_t eval_oil_press(float press_kpa, rpm_t rpm, prot_level_t prev
  * SC-FIX-C1: take the freshly-built events bitmask as a parameter rather
  * than reading p->active_events.  Previously the function read the field
  * BEFORE engine_protection_update() committed the new value at the end of
- * the tick — so the boost-overshoot reduction always lagged by one 50 ms
+ * the tick - so the boost-overshoot reduction always lagged by one 50 ms
  * cycle.  Passing the in-flight events fixes that latency.
  */
 static float calc_power_reduction(const prot_status_t *p,
@@ -132,7 +132,7 @@ static float calc_power_reduction(const prot_status_t *p,
     }
 
     /* SC: small additional reduction during persistent boost overshoot to
-     * help the BCV catch up — without going to full cut */
+     * help the BCV catch up - without going to full cut */
     if (live_events & PROT_EVENT_BOOST_OVERSHOOT) {
         pwr += 15.0f;
     }
@@ -141,9 +141,9 @@ static float calc_power_reduction(const prot_status_t *p,
     return pwr;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PUBLIC IMPLEMENTATION
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 g8ba_status_t engine_protection_init(void)
 {
@@ -160,7 +160,7 @@ void engine_protection_update(const prot_inputs_t *inputs)
     g_protection.inputs = *inputs;
     prot_event_flags_t events = PROT_EVENT_NONE;
 
-    /* ── 1. Sync lost ──────────────────────────────────────────────────── */
+    /* -- 1. Sync lost ---------------------------------------------------- */
     if (!inputs->sync_ok) {
         prot_emergency_cut();
         events |= PROT_EVENT_SYNC_LOST;
@@ -172,7 +172,7 @@ void engine_protection_update(const prot_inputs_t *inputs)
         fuel_cut_clear(FCUT_SYNC_LOST);
     }
 
-    /* ── 2. Boost safety (SC) ──────────────────────────────────────────── */
+    /* -- 2. Boost safety (SC) -------------------------------------------- */
     bool boost_hard = boost_safety_check(inputs->map_kpa);
     if (boost_hard) {
         events |= PROT_EVENT_BOOST_HARDCUT;
@@ -183,7 +183,7 @@ void engine_protection_update(const prot_inputs_t *inputs)
         events |= PROT_EVENT_BOOST_OVERSHOOT;
     }
 
-    /* ── 3. CLT ────────────────────────────────────────────────────────── */
+    /* -- 3. CLT ---------------------------------------------------------- */
     prot_level_t clt_lv = eval_clt(inputs->clt_c, g_protection.thermal.clt_level);
     g_protection.thermal.clt_level = clt_lv;
 
@@ -209,7 +209,7 @@ void engine_protection_update(const prot_inputs_t *inputs)
         break;
     }
 
-    /* ── 4. Oil pressure ───────────────────────────────────────────────── */
+    /* -- 4. Oil pressure ------------------------------------------------- */
     prot_level_t oil_lv = eval_oil_press(inputs->oil_pressure_kpa, inputs->rpm,
                                          g_protection.thermal.oil_press_level);
     g_protection.thermal.oil_press_level = oil_lv;
@@ -233,7 +233,7 @@ void engine_protection_update(const prot_inputs_t *inputs)
         break;
     }
 
-    /* ── 5. Oil temperature ────────────────────────────────────────────── */
+    /* -- 5. Oil temperature ---------------------------------------------- */
     prot_level_t oil_temp_prev = g_protection.thermal.oil_temp_level;
 
     if (inputs->oil_temp_c >= G8BA_OIL_TEMP_MAX_C) {
@@ -250,7 +250,7 @@ void engine_protection_update(const prot_inputs_t *inputs)
         }
     }
 
-    /* ── 6. IAT hot (SC) — informational warn flag with hysteresis ─────── */
+    /* -- 6. IAT hot (SC) - informational warn flag with hysteresis ------- */
     static bool s_iat_warn_latched = false;
     if (inputs->iat_c >= G8BA_IAT_BOOST_LIMIT_C) {
         s_iat_warn_latched = true;
@@ -262,11 +262,11 @@ void engine_protection_update(const prot_inputs_t *inputs)
         prot_send_warning(PROT_EVENT_IAT_HOT);
     }
 
-    /* ── 7. Power reduction (SC-FIX-C1: pass live events, not stale field) ── */
+    /* -- 7. Power reduction (SC-FIX-C1: pass live events, not stale field) -- */
     g_protection.thermal.power_reduction_pct = calc_power_reduction(
         (const prot_status_t *)&g_protection, events);
 
-    /* ── 8. Overall level ─────────────────────────────────────────────── */
+    /* -- 8. Overall level ----------------------------------------------- */
     prot_level_t worst = PROT_LEVEL_OK;
     if (clt_lv > worst)         worst = clt_lv;
     if (oil_lv > worst)         worst = oil_lv;

@@ -1,25 +1,25 @@
 /**
  * @file    main.c
- * @brief   G8BA-SC ECU Firmware — Main Entry Point & ChibiOS Task Orchestration
+ * @brief   G8BA-SC ECU Firmware - Main Entry Point & ChibiOS Task Orchestration
  *
  * Vortech V-7 YSi-Trim variant.  See SC/README.md and SC/PR.md for
  * differences against the NA branch.
  *
- * ┌─────────────────────────────────────────────────────────────────────────┐
- * │  Task Map (SC adds boost-control PID into thd_medium_ctrl)              │
- * │                                                                         │
- * │  Priority           Thread              Period    Responsibility        │
- * │  ─────────          ──────────────────  ────────  ──────────────────────│
- * │  ISR                crank_tooth_cb      per-tooth Crank position update │
- * │  ISR                cam_edge_cb         per-edge  Cam phase measurement │
- * │  ISR                knock_adc_cb        per-samp  Knock ADC (DMA)       │
- * │  ISR                g8ba_cylinder_event_isr  per-fire  Mailbox post     │
- * │  NORMALPRIO+20      thd_cyl_events      event     Cylinder dispatch     │
- * │  NORMALPRIO+10      thd_fast_ctrl       5  ms     Knock + CVVT + dwell  │
- * │  NORMALPRIO         thd_medium_ctrl     10 ms     Fuel/ign + boost PID  │
- * │  NORMALPRIO−5       thd_slow_ctrl       50 ms     Protection + boost SC │
- * │  LOWPRIO            thd_diag            250 ms    Diagnostics           │
- * └─────────────────────────────────────────────────────────────────────────┘
+ * +-------------------------------------------------------------------------+
+ * |  Task Map (SC adds boost-control PID into thd_medium_ctrl)              |
+ * |                                                                         |
+ * |  Priority           Thread              Period    Responsibility        |
+ * |  ---------          ------------------  --------  ----------------------|
+ * |  ISR                crank_tooth_cb      per-tooth Crank position update |
+ * |  ISR                cam_edge_cb         per-edge  Cam phase measurement |
+ * |  ISR                knock_adc_cb        per-samp  Knock ADC (DMA)       |
+ * |  ISR                g8ba_cylinder_event_isr  per-fire  Mailbox post     |
+ * |  NORMALPRIO+20      thd_cyl_events      event     Cylinder dispatch     |
+ * |  NORMALPRIO+10      thd_fast_ctrl       5  ms     Knock + CVVT + dwell  |
+ * |  NORMALPRIO         thd_medium_ctrl     10 ms     Fuel/ign + boost PID  |
+ * |  NORMALPRIO-5       thd_slow_ctrl       50 ms     Protection + boost SC |
+ * |  LOWPRIO            thd_diag            250 ms    Diagnostics           |
+ * +-------------------------------------------------------------------------+
  */
 
 #include "g8ba_config.h"
@@ -40,9 +40,9 @@
 #include "engine.h"
 #include "os_util.h"
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * ENGINE STATE MACHINE
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 typedef enum {
     ENGINE_STATE_OFF        = 0,
@@ -54,17 +54,17 @@ typedef enum {
 
 static volatile engine_state_t s_engine_state = ENGINE_STATE_OFF;
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * INTER-TASK MAILBOX (depth = 16, same as NA)
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 #define CYL_MAILBOX_DEPTH   (G8BA_CYLINDERS * 2u)
 static mailbox_t  g_cyl_mailbox;
 static msg_t      g_cyl_mb_buf[CYL_MAILBOX_DEPTH];
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * THREAD WORKING AREAS
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 static THD_WORKING_AREA(wa_fast_ctrl,    STACK_KNOCK   + STACK_CVVT);
 static THD_WORKING_AREA(wa_medium_ctrl,  STACK_FUEL_INJ + STACK_IGNITION + STACK_BOOST);
@@ -72,10 +72,10 @@ static THD_WORKING_AREA(wa_slow_ctrl,    STACK_PROTECTION);
 static THD_WORKING_AREA(wa_diag,         512u);
 static THD_WORKING_AREA(wa_cyl_events,   STACK_CRANK_SYNC);
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * SENSOR READING HELPERS
  * Wraps RusEFI Sensor API for use in C context.
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 static inline float read_clt(void)            { return 80.0f;  }
 static inline float read_iat(void)            { return 25.0f;  }
@@ -86,9 +86,9 @@ static inline float read_oil_pressure_kpa(void){ return 350.0f; }
 static inline float read_oil_temp(void)       { return 90.0f;  }
 static inline float read_vbatt(void)          { return 13.8f;  }
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * ENGINE STATE MACHINE
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 static engine_state_t eval_engine_state(rpm_t rpm, bool sync_ok,
                                         bool hard_cut_active)
@@ -100,12 +100,12 @@ static engine_state_t eval_engine_state(rpm_t rpm, bool sync_ok,
     return ENGINE_STATE_RUNNING;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * THREAD IMPLEMENTATIONS
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 /**
- * thd_cyl_events — NORMALPRIO+20
+ * thd_cyl_events - NORMALPRIO+20
  * Cylinder event dispatch (mailbox-driven).
  */
 static THD_FUNCTION(thd_cyl_events, arg)
@@ -145,7 +145,7 @@ static THD_FUNCTION(thd_cyl_events, arg)
 }
 
 /**
- * thd_fast_ctrl — NORMALPRIO+10, 5 ms (knock + CVVT + dwell, unchanged from NA)
+ * thd_fast_ctrl - NORMALPRIO+10, 5 ms (knock + CVVT + dwell, unchanged from NA)
  */
 static THD_FUNCTION(thd_fast_ctrl, arg)
 {
@@ -178,7 +178,7 @@ static THD_FUNCTION(thd_fast_ctrl, arg)
 }
 
 /**
- * thd_medium_ctrl — NORMALPRIO, 10 ms (fuel/ign + SC boost PID)
+ * thd_medium_ctrl - NORMALPRIO, 10 ms (fuel/ign + SC boost PID)
  */
 static THD_FUNCTION(thd_medium_ctrl, arg)
 {
@@ -259,10 +259,10 @@ static THD_FUNCTION(thd_medium_ctrl, arg)
 
         rev_limiter_update(rpm);
 
-        /* ── SC-7: BOOST CONTROL PID step ─────────────────────────────────
+        /* -- SC-7: BOOST CONTROL PID step ---------------------------------
          *
          * SAFE-SC-2/SC-3: pass clt and engine_protect_cut so boost_update
-         * can lock itself out when the engine is cold (< 50°C) or any
+         * can lock itself out when the engine is cold (< 50degC) or any
          * upstream protection cut is active.  This is checked INSIDE the
          * boost module rather than gated here so the diagnostic state in
          * g_boost stays coherent (we want g_boost.mode = OFF visible to TS,
@@ -276,7 +276,7 @@ static THD_FUNCTION(thd_medium_ctrl, arg)
 }
 
 /**
- * thd_slow_ctrl — NORMALPRIO−5, 50 ms (engine protection + knock self-test)
+ * thd_slow_ctrl - NORMALPRIO-5, 50 ms (engine protection + knock self-test)
  */
 static THD_FUNCTION(thd_slow_ctrl, arg)
 {
@@ -318,7 +318,7 @@ static THD_FUNCTION(thd_slow_ctrl, arg)
 }
 
 /**
- * thd_diag — LOWPRIO, 250 ms (TunerStudio output)
+ * thd_diag - LOWPRIO, 250 ms (TunerStudio output)
  */
 static THD_FUNCTION(thd_diag, arg)
 {
@@ -339,9 +339,9 @@ static THD_FUNCTION(thd_diag, arg)
     }
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * CRANK ANGLE SCHEDULER CALLBACK
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 void g8ba_cylinder_event_isr(uint8_t cyl_index)
 {
@@ -351,9 +351,9 @@ void g8ba_cylinder_event_isr(uint8_t cyl_index)
     chSysUnlockFromISR();
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * INITIALIZATION
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 void g8ba_init(void)
 {
@@ -414,14 +414,14 @@ void g8ba_start_threads(void)
                       thd_diag, NULL);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
- * MAIN — standalone build (RusEFI integration replaces this)
- * ══════════════════════════════════════════════════════════════════════════ */
+/* ==========================================================================
+ * MAIN - standalone build (RusEFI integration replaces this)
+ * ========================================================================== */
 
 #ifdef G8BA_STANDALONE_BUILD
 
 static const WDGConfig wdg_cfg = {
-    .pr   = STM32_IWDG_PR_64,          /* /64 → 500 Hz                       */
+    .pr   = STM32_IWDG_PR_64,          /* /64 -> 500 Hz                       */
     .rlr  = 150u,                       /* 300 ms timeout                     */
     .winr = STM32_IWDG_WIN_DISABLED,
 };

@@ -1,13 +1,13 @@
 /**
  * @file    knock_control.c
- * @brief   Module 5 — Knock Detection & Control Implementation
+ * @brief   Module 5 - Knock Detection & Control Implementation
  *
  * Signal path:
- *   Piezo sensor → charge amplifier → bandpass filter (6.8 kHz) →
- *   STM32H743 ADC (DMA) → RMS/peak detection in window → threshold compare
+ *   Piezo sensor -> charge amplifier -> bandpass filter (6.8 kHz) ->
+ *   STM32H743 ADC (DMA) -> RMS/peak detection in window -> threshold compare
  *
  * Dynamic threshold:
- *   threshold = noise_floor × KNOCK_THRESHOLD_RATIO
+ *   threshold = noise_floor x KNOCK_THRESHOLD_RATIO
  *   Noise floor is learned per-RPM bin during normal operation.
  *
  * Retard strategy:
@@ -21,17 +21,17 @@
 #include <string.h>
 #include <math.h>
 
-/* ── RusEFI headers ──────────────────────────────────────────────────────── */
+/* -- RusEFI headers -------------------------------------------------------- */
 #include "adc_inputs.h"
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * CONSTANTS
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
-/** Knock detection threshold = noise floor × this ratio */
+/** Knock detection threshold = noise floor x this ratio */
 #define KNOCK_THRESHOLD_RATIO   2.5f
 
-/** Noise floor learning rate (exponential moving average α) */
+/** Noise floor learning rate (exponential moving average alpha) */
 #define NOISE_FLOOR_ALPHA       0.05f
 
 /** Minimum noise floor to prevent false detect when sensor goes quiet */
@@ -39,8 +39,8 @@
 
 /**
  * IIR bandpass filter coefficients for ~6.8 kHz at Fs=44.1 kHz sampling.
- * 2nd-order Butterworth BPF, ±500 Hz bandwidth.
- * (Pre-computed — recalculate if ADC sample rate changes)
+ * 2nd-order Butterworth BPF, +/-500 Hz bandwidth.
+ * (Pre-computed - recalculate if ADC sample rate changes)
  */
 #define BPF_B0   0.06120f
 #define BPF_B1   0.0f
@@ -49,12 +49,12 @@
 #define BPF_A2   0.87760f
 
 /* Bank cylinder mapping */
-#define IS_BANK1(cyl)  ((cyl) < 4u)     /* cylinders 0–3 = Bank 1 */
-#define IS_BANK2(cyl)  ((cyl) >= 4u)    /* cylinders 4–7 = Bank 2 */
+#define IS_BANK1(cyl)  ((cyl) < 4u)     /* cylinders 0-3 = Bank 1 */
+#define IS_BANK2(cyl)  ((cyl) >= 4u)    /* cylinders 4-7 = Bank 2 */
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * MODULE STATE
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 volatile knock_status_t g_knock;
 
@@ -67,11 +67,11 @@ static float s_bpf_y[G8BA_KNOCK_SENSORS][2]; /* output history */
  * shared one `s_active_window_cyl` / `s_window_peak_mv`.
  *
  * Failure mode: firing order 1-2-7-8-4-5-6-3 puts Bank1 and Bank2
- * cylinders only 90° apart. If B1 cyl-1 window is open (sensor=0)
+ * cylinders only 90deg apart. If B1 cyl-1 window is open (sensor=0)
  * and cyl-7 (Bank2, sensor=1) fires, knock_window_open() for B2 would
  * overwrite the single s_active_window_cyl = cyl-7.  Then when the
  * angle-scheduled close fires for cyl-1, the guard
- * `s_active_window_cyl != cyl_index` would falsely reject it — B1's
+ * `s_active_window_cyl != cyl_index` would falsely reject it - B1's
  * knock event would be silently dropped and peak state left stale.
  * ADC data from the B2 sensor could also corrupt the B1 peak value.
  *
@@ -80,13 +80,13 @@ static float s_bpf_y[G8BA_KNOCK_SENSORS][2]; /* output history */
 static volatile int8_t  s_active_window_cyl[G8BA_KNOCK_SENSORS];
 static volatile float   s_window_peak_mv[G8BA_KNOCK_SENSORS];
 
-/* Noise floor per RPM bin (16 bins: 0–800, 800–1600 ... 7200–8000 rpm) */
+/* Noise floor per RPM bin (16 bins: 0-800, 800-1600 ... 7200-8000 rpm) */
 #define NOISE_RPM_BINS  16u
 static float s_noise_floor[G8BA_KNOCK_SENSORS][NOISE_RPM_BINS];
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PRIVATE HELPERS
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 /** Apply 2nd-order IIR bandpass filter to one sample */
 static float bpf_sample(knock_sensor_id_t sensor, float input_mv)
@@ -119,9 +119,9 @@ static float get_noise_floor(knock_sensor_id_t sensor, rpm_t rpm)
     return (floor_val < NOISE_FLOOR_MIN_MV) ? NOISE_FLOOR_MIN_MV : floor_val;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PUBLIC IMPLEMENTATION
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 g8ba_status_t knock_init(void)
 {
@@ -169,9 +169,9 @@ void knock_window_open(uint8_t cyl_index)
      * SAFE-3 FIX: write order matters.  knock_adc_callback() (DMA IRQ) reads
      * window_state and accumulates into s_window_peak_mv only when state is
      * KNOCK_WIN_SAMPLING.  Previous order:
-     *     1. window_state = SAMPLING       ← ADC IRQ now starts accumulating
-     *     2. active_window_cyl = cyl       ← into the OLD cylinder's tracking
-     *     3. peak_mv = 0                   ← then we wipe that work
+     *     1. window_state = SAMPLING       <- ADC IRQ now starts accumulating
+     *     2. active_window_cyl = cyl       <- into the OLD cylinder's tracking
+     *     3. peak_mv = 0                   <- then we wipe that work
      *
      * If an ADC sample lands between (1) and (3) it gets credited to the
      * previous cylinder's peak (still indexed by the same sensor) and is
@@ -183,13 +183,13 @@ void knock_window_open(uint8_t cyl_index)
      * Correct order:
      *   1. clear peak buffer
      *   2. publish active cylinder for this sensor
-     *   3. flip state to SAMPLING last — ADC IRQ now sees fresh, consistent
+     *   3. flip state to SAMPLING last - ADC IRQ now sees fresh, consistent
      *      tracking and a zeroed accumulator.
      *
      * This pattern is the standard "publish data first, then flag" idiom.
      * On Cortex-M7 with volatile fields, store ordering at the C level is
      * preserved within a single thread; the IRQ observes whatever the
-     * compiler emitted between the writes — the order above is failsafe.
+     * compiler emitted between the writes - the order above is failsafe.
      */
     s_window_peak_mv[sensor]     = 0.0f;                /* per-sensor (M-2) */
     s_active_window_cyl[sensor]  = (int8_t)cyl_index;  /* per-sensor (M-2) */
@@ -229,7 +229,7 @@ void knock_adc_callback(knock_sensor_id_t sensor_id, uint16_t raw_counts)
     float filtered = bpf_sample(sensor_id, mv);
     s->filtered_mv = filtered;
 
-    /* Track peak absolute value in window — indexed per-sensor (M-2 fix) */
+    /* Track peak absolute value in window - indexed per-sensor (M-2 fix) */
     float abs_filt = fabsf(filtered);
     if (abs_filt > s_window_peak_mv[sensor_id]) {
         s_window_peak_mv[sensor_id] = abs_filt;
@@ -247,7 +247,7 @@ void knock_process(void)
         knock_sensor_state_t *s  = (knock_sensor_state_t *)&g_knock.sensors[sensor];
 
         if (s->window_state != KNOCK_WIN_PROCESS) {
-            /* This cylinder's window not yet processed — skip */
+            /* This cylinder's window not yet processed - skip */
             continue;
         }
 
@@ -267,7 +267,7 @@ void knock_process(void)
             }
             any_knock = true;
         } else {
-            /* Clean cycle — slowly advance back */
+            /* Clean cycle - slowly advance back */
             c->knock_detected  = false;
             c->clean_cycles++;
             if (c->retard_deg > 0.0f) {
@@ -328,7 +328,7 @@ void knock_flush_open_windows(void)
 {
     /*
      * R-1 FIX: Without angle-scheduled knock_window_close() the window state
-     * stays KNOCK_WIN_SAMPLING indefinitely — knock_process() polls for
+     * stays KNOCK_WIN_SAMPLING indefinitely - knock_process() polls for
      * KNOCK_WIN_PROCESS and never finds it, so retard is never applied.
      *
      * This function is called from thd_fast_ctrl every 5ms as a fallback.
@@ -338,7 +338,7 @@ void knock_flush_open_windows(void)
      *      evaluate it on the next call (same tick, later in thd_fast_ctrl).
      *   3. Clear the per-sensor tracking variables.
      *
-     * The detection window will be shorter than the designed 10°–60° ATDC
+     * The detection window will be shorter than the designed 10deg-60deg ATDC
      * window, but any knock energy captured before the flush is still used.
      * This is conservative (may miss very late-arriving knock) but safe.
      *
@@ -353,7 +353,7 @@ void knock_flush_open_windows(void)
 
         int8_t active_cyl = s_active_window_cyl[s];
         if (active_cyl < 0 || (uint8_t)active_cyl >= G8BA_CYLINDERS) {
-            /* Stale/invalid — reset to idle without processing */
+            /* Stale/invalid - reset to idle without processing */
             sens->window_state   = KNOCK_WIN_IDLE;
             s_active_window_cyl[s] = -1;
             s_window_peak_mv[s]    = 0.0f;

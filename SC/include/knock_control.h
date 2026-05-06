@@ -1,9 +1,9 @@
 /**
  * @file    knock_control.h
- * @brief   Module 5 — Knock (Detonation) Detection & Control
+ * @brief   Module 5 - Knock (Detonation) Detection & Control
  *
  * Two knock sensors (one per bank) detect combustion knock at ~6.8 kHz.
- * Detection window is gated to [G8BA_KNOCK_WINDOW_ATDC … G8BA_KNOCK_WINDOW_END]
+ * Detection window is gated to [G8BA_KNOCK_WINDOW_ATDC ... G8BA_KNOCK_WINDOW_END]
  * after each cylinder's TDC, suppressing mechanical noise.
  *
  * Control strategy:
@@ -18,14 +18,14 @@
 
 #include "g8ba_config.h"
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * DATA TYPES
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 /** Knock sensor assignment */
 typedef enum {
-    KNOCK_SENSOR_B1 = 0,   /* Bank 1 — cylinders 1,2,3,4               */
-    KNOCK_SENSOR_B2 = 1,   /* Bank 2 — cylinders 5,6,7,8               */
+    KNOCK_SENSOR_B1 = 0,   /* Bank 1 - cylinders 1,2,3,4               */
+    KNOCK_SENSOR_B2 = 1,   /* Bank 2 - cylinders 5,6,7,8               */
     KNOCK_SENSOR_COUNT = 2,
 } knock_sensor_id_t;
 
@@ -39,10 +39,10 @@ typedef enum {
 /** Per-cylinder knock state */
 typedef struct {
     uint8_t             cyl_index;
-    float               retard_deg;        /* current applied retard (°CA)   */
+    float               retard_deg;        /* current applied retard (degCA)   */
     float               background_noise;  /* rolling noise floor (counts)   */
     float               peak_level;        /* max signal in last window      */
-    float               knock_threshold;   /* dynamic threshold (noise × k)  */
+    float               knock_threshold;   /* dynamic threshold (noise x k)  */
     bool                knock_detected;    /* knock in the last cycle        */
     uint32_t            knock_count;       /* cumulative knock events        */
     uint32_t            clean_cycles;      /* consecutive knock-free cycles  */
@@ -54,7 +54,7 @@ typedef struct {
     float               raw_mv;            /* last ADC reading (mV)          */
     float               filtered_mv;       /* bandpass-filtered signal       */
     knock_window_state_t window_state;
-    floatdeg_t          window_open_angle; /* crank angle (°) window opened  */
+    floatdeg_t          window_open_angle; /* crank angle (deg) window opened  */
     bool                sensor_fault;      /* open circuit / short detected  */
 } knock_sensor_state_t;
 
@@ -68,15 +68,15 @@ typedef struct {
     uint32_t            total_events;
 } knock_status_t;
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * MODULE STATE
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 extern volatile knock_status_t g_knock;
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PUBLIC API
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 /**
  * @brief  Initialise knock detection module.
@@ -102,7 +102,7 @@ void knock_window_open(uint8_t cyl_index);
 void knock_window_close(uint8_t cyl_index);
 
 /**
- * @brief  ADC sample complete callback — called from DMA IRQ.
+ * @brief  ADC sample complete callback - called from DMA IRQ.
  *         Applies bandpass filter and updates peak level for open window.
  * @param  sensor_id   Which sensor's ADC completed
  * @param  raw_counts  Raw ADC value
@@ -110,14 +110,14 @@ void knock_window_close(uint8_t cyl_index);
 void knock_adc_callback(knock_sensor_id_t sensor_id, uint16_t raw_counts);
 
 /**
- * @brief  Process completed window — determine if knock occurred.
+ * @brief  Process completed window - determine if knock occurred.
  *         Updates per-cylinder retard and noise floor.
  *         Call from TASK_PERIOD_FAST_MS task after window_close.
  */
 void knock_process(void);
 
 /**
- * @brief  Return total ignition retard to apply for cylinder `cyl` (°CA).
+ * @brief  Return total ignition retard to apply for cylinder `cyl` (degCA).
  *         Combined per-cylinder + bank retard, clamped to G8BA_KNOCK_RETARD_MAX.
  * @param  cyl_index  0-based cylinder index
  * @return Retard amount (positive = retard from base timing)
@@ -145,7 +145,7 @@ void knock_update_noise_floor(rpm_t rpm);
  *         Without angle-scheduled close, knock_window_open() sets a sensor to
  *         KNOCK_WIN_SAMPLING but it is never transitioned to KNOCK_WIN_PROCESS,
  *         so knock_process() never evaluates the window and no retard is ever
- *         applied — catastrophic knock goes undetected.
+ *         applied - catastrophic knock goes undetected.
  *
  *         Call once per thd_fast_ctrl tick (5ms) BEFORE knock_process().
  *         The peak captured up to the flush point is used for detection;
@@ -159,7 +159,7 @@ void knock_update_noise_floor(rpm_t rpm);
 void knock_flush_open_windows(void);
 
 /**
- * @brief  Sensor self-test — check signal plausibility at rest.
+ * @brief  Sensor self-test - check signal plausibility at rest.
  * @param  sensor  Sensor to test
  * @return G8BA_OK if sensor responding correctly
  */

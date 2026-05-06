@@ -1,48 +1,48 @@
 /**
  * @file    ignition_map.c
- * @brief   Ignition Calibration Tables — G8BA + Vortech V-7 YSi-Trim (SC variant)
+ * @brief   Ignition Calibration Tables - G8BA + Vortech V-7 YSi-Trim (SC variant)
  *
  * SC re-tune notes:
- *   - 9.0:1 dished forged pistons → MBT timing slightly higher than 10.4:1
+ *   - 9.0:1 dished forged pistons -> MBT timing slightly higher than 10.4:1
  *     would have allowed under boost, but still well below NA peak values.
- *   - Boost rows (>100 kPa) pulled to 14–22° peak based on typical V8/SC
+ *   - Boost rows (>100 kPa) pulled to 14-22deg peak based on typical V8/SC
  *     dyno data; further pull-back below 5000 RPM where cylinder pressure
  *     peaks earlier.
  *   - Per-cylinder knock retard (knock_control) provides closed-loop trim.
- *   - All values are first-pass — DYNO VERIFICATION REQUIRED before WOT use.
+ *   - All values are first-pass - DYNO VERIFICATION REQUIRED before WOT use.
  */
 
 #include "ignition_map.h"
 #include "g8ba_config.h"
 #include <string.h>
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * TABLE AXES
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 const uint16_t IGNMAP_RPM_AXIS[IGNMAP_RPM_POINTS] = {
      600u, 800u, 1000u, 1500u, 2000u, 2500u, 3000u, 3500u,
     4000u, 4500u, 5000u, 5500u, 6000u, 6500u, 7000u, 7500u
 };
 
-/** MAP axis (kPa absolute) — 14 points; matches fuel_map MAP axis exactly */
+/** MAP axis (kPa absolute) - 14 points; matches fuel_map MAP axis exactly */
 const uint8_t IGNMAP_MAP_AXIS[IGNMAP_MAP_POINTS] = {
     30u, 50u, 70u, 90u, 100u,
    110u, 120u, 130u, 140u, 150u,
    170u, 190u, 220u, 250u
 };
 
-/* ══════════════════════════════════════════════════════════════════════════
- * BASE ADVANCE TABLE  [16 RPM × 14 MAP]  — degrees BTDC, uint8_t
- * ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
+ * BASE ADVANCE TABLE  [16 RPM x 14 MAP]  - degrees BTDC, uint8_t
+ * ==========================================================================
  *
  * Boost retard rationale (per 10 kPa above 100 kPa, very rough rule of thumb):
- *   - Light boost (100–140 kPa) : pull ~1° per 10 kPa
- *   - Heavy boost (140–200 kPa) : pull ~1.5° per 10 kPa
- *   - Above 200 kPa             : pull ~2° per 10 kPa  (knock-limited)
+ *   - Light boost (100-140 kPa) : pull ~1deg per 10 kPa
+ *   - Heavy boost (140-200 kPa) : pull ~1.5deg per 10 kPa
+ *   - Above 200 kPa             : pull ~2deg per 10 kPa  (knock-limited)
  *
  * Columns:  MAP  30  50  70  90 100 110 120 130 140 150 170 190 220 250 kPa
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 static const uint8_t s_adv_table[IGNMAP_RPM_POINTS][IGNMAP_MAP_POINTS] = {
     /* RPM  600 */ { 14, 12,  8,  6,  5,  5,  5,  5,  5,  5,  5,  5,  5,  5 },
     /* RPM  800 */ { 18, 14, 11,  8,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6 },
@@ -62,9 +62,9 @@ static const uint8_t s_adv_table[IGNMAP_RPM_POINTS][IGNMAP_MAP_POINTS] = {
     /* RPM 7500 */ { 32, 28, 22, 20, 18, 16, 14, 13, 12, 11, 10,  9,  9,  8 },
 };
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * MODULE STATE
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 volatile ign_cyl_knock_t g_ign_knock[G8BA_CYLINDERS];
 
@@ -73,9 +73,9 @@ static struct {
     uint8_t         mask_toggle;
 } s_rev;
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PRIVATE HELPERS
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 static float lerp(float y0, float y1, float frac)
 {
@@ -122,9 +122,9 @@ static float adv_bilinear(float rpm, float map_kpa)
     return lerp(lo, hi, rfrac);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
  * PUBLIC IMPLEMENTATION
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ========================================================================== */
 
 g8ba_status_t ign_map_init(void)
 {
@@ -133,7 +133,7 @@ g8ba_status_t ign_map_init(void)
     s_rev.state       = IGNMAP_REV_OFF;
     s_rev.mask_toggle = 0u;
 
-    /* Axis monotonicity check — all builds (IG-3 retained from NA) */
+    /* Axis monotonicity check - all builds (IG-3 retained from NA) */
     for (uint8_t i = 0u; i < IGNMAP_RPM_POINTS - 1u; i++) {
         if (IGNMAP_RPM_AXIS[i] >= IGNMAP_RPM_AXIS[i + 1u]) {
             return G8BA_ERR_RANGE;
