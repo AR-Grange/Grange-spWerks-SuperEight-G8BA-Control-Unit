@@ -110,7 +110,7 @@ Key features:
 | thd_cyl_events | NORMALPRIO + 20 | Event-driven | Cylinder event dispatch (fuel + ign + knock window open) |
 | thd_fast_ctrl | NORMALPRIO + 10 | 5 ms | Knock processing + CVVT control + dwell update |
 | thd_medium_ctrl | NORMALPRIO | 10 ms | Fuel/ignition recalc, lambda PID (every 10th call), rev limiter |
-| thd_slow_ctrl | NORMALPRIO − 5 | 50 ms | Engine protection evaluation + knock sensor self-test (5 s) |
+| thd_slow_ctrl | NORMALPRIO - 5 | 50 ms | Engine protection evaluation + knock sensor self-test (5 s) |
 | thd_diag | LOWPRIO | 250 ms | Diagnostics + TunerStudio output |
 
 ### ISR → Thread Communication
@@ -138,22 +138,22 @@ while ensuring the correct cylinder index reaches the dispatcher (C-2 fix).
 - VE-based air mass calculation
 - **VE table**: 16 RPM × 10 MAP points (600-7,800 RPM × 20-105 kPa), bilinear interpolation
 - **Injector dead-time**: battery-voltage compensation (8-16 V, 9 points, 2.2-0.52 ms)
-- **CLT warm-up enrichment**: up to 1.40× correction at −20 °C
-- **IAT charge-density correction**: 11 points (−20-80 °C)
+- **CLT warm-up enrichment**: up to 1.40× correction at -20 °C
+- **IAT charge-density correction**: 11 points (-20-80 °C)
 - Closed-loop lambda PID correction
 - Pulse-width clamp: minimum 800 µs / maximum 25,000 µs
 
 ### Module 3 - Ignition Control (`ignition_control` + `ignition_map`)
 
 - **Ignition advance table**: 16 RPM × 10 MAP points, bilinear interpolation
-- CLT correction: cold −5 ° / overtemp −3 °
-- IAT correction: up to −4 ° above 80 °C
+- CLT correction: cold -5 ° / overtemp -3 °
+- IAT correction: up to -4 ° above 80 °C
 - **Per-cylinder independent knock retard** (active path):
   `ignition_calc_advance()` reads `knock_get_retard(cyl)` from `knock_control` -
-  retard accumulated at +1.5 °/knock, recovery −0.3 °/clean cycle, max 10 ° (see Module 5).
+  retard accumulated at +1.5 °/knock, recovery -0.3 °/clean cycle, max 10 ° (see Module 5).
   Cylinders that did not knock retain full base advance.
 - `ignition_map` also exposes a parallel `ign_map_knock_event()` / `ign_map_clean_cycle()`
-  API with separate constants (+2.0 °/−0.5 °, max 15 °) and `g_ign_knock[]` state.
+  API with separate constants (+2.0 °/-0.5 °, max 15 °) and `g_ign_knock[]` state.
   These functions exist for future per-cylinder integration but are NOT currently called -
   knock retard flows exclusively through `g_knock.cylinders[].retard_deg`.
 - Dwell time: battery-voltage compensation (11-14.5 V → 4.5-2.8 ms)
@@ -190,7 +190,7 @@ while ensuring the correct cylinder index reaches the dispatcher (C-2 fix).
 - 2nd-order IIR bandpass filter centred at 6,800 Hz (@ 44.1 kHz ADC sample rate)
 - **Detection window**: 10 °-60 ° ATDC per cylinder (suppresses mechanical noise outside this band)
 - **Dynamic threshold**: per-RPM noise floor learning (16 RPM bins × 2 sensors)
-- **Retard** (from `g8ba_config.h`): +1.5 ° per knock event, −0.3 °/clean cycle recovery, max 10 °
+- **Retard** (from `g8ba_config.h`): +1.5 ° per knock event, -0.3 °/clean cycle recovery, max 10 °
 - Independent per-cylinder retard tracking; per-sensor active-window state (M-2 fix)
   prevents bank-1 and bank-2 windows from corrupting each other when cylinders only
   90 ° apart fire on opposite banks
